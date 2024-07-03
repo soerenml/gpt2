@@ -195,6 +195,28 @@ class GPT(nn.Module):
         # Final (linear) classifier head.
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
+
+    def forward(self, idx):
+        # idx is of shape (B, T)
+        B, T = idx.size()
+        # block_size = maximum length of input sequences
+        assert T <= self.config.block_size, "Cannot forward, model block size is exhausted."
+        # forward the token and position embeddings.
+        # arrange returns a 1D tensor with values from the start (0 in this case) to the end (T), excluding T.
+        # the function is similar to Python’s built-in range function but returns a tensor instead of a list.
+        pos = torch.arange(0, T, type=torch.long, device=idx.device) # Shape (T)
+        pos_emd = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
+        tok_emd = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+        x = tok_emd + pos_emd # sum the token and position embeddings.
+        # forward the blocks to the transformer
+        for block in self.transformer.h:
+            x = block(x)
+        # forward the final layer norm to the classifier
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        return logits
+
+
     @classmethod
     def from_pretrained(cls, model_type):
         """Loads pretrained GPT-2 model weights from huggingface"""
