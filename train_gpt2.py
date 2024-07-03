@@ -30,9 +30,12 @@ class CasualSelfAttention(nn.Module):
         # regularization
         self.n_head = config.n_head
         self.n_embd = config.n_embd
-        self.register_buffer('bias', torch.tril(torch.ones(config.block_size, config.block_size))
-                              .view(1, 1, config.block_size, config.block_size)) # reshape the tensor to (1, 1, block_size, block_size)
-
+        # Block size is the maximum length of input sequences.
+        # Tril returns the lower triangular part of the matrix (2-D tensor)
+        self.register_buffer(
+            name='bias',
+            tensor=torch.tril(torch.ones(config.block_size, config.block_size)).view(1, 1, config.block_size, config.block_size) # reshape the tensor to (1, 1, block_size, block_size)
+        )
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality.
