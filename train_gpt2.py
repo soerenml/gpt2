@@ -205,8 +205,7 @@ class GPT(nn.Module):
         # forward the token and position embeddings.
         # arrange returns a 1D tensor with values from the start (0 in this case) to the end (T), excluding T.
         # the function is similar to Python’s built-in range function but returns a tensor instead of a list.
-        pos = torch.arange(0, T, type=torch.long, device=idx.device) # Shape (T)
-        print(pos)
+        pos = torch.arange(start=0, end=T, step=1, dtype=torch.long, device=idx.device) # Shape (T)
 
         # positional encoding of the transformer block
         pos_emd = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
@@ -280,14 +279,11 @@ class GPT(nn.Module):
 
         return model
 
-model = GPT.from_pretrained('gpt2')
-print("did't crash yay")
-
 num_return_sequences = 5
 max_length = 30
 model = GPT.from_pretrained('gpt2')
 model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
-model.to('cuda') # we are moving all the model to GPU
+model.to('cpu') # we are moving all the model to GPU
 
 import tiktoken
 enc = tiktoken.get_encoding('gpt2')
@@ -295,7 +291,8 @@ tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # In this case it's (5, 8) tokens - five rows of eight tokens
 # x is the idx for the forward function
-x = tokens.to('cuda')
+x = tokens.to('cpu')
+print(x.device)
 
 # todo - understand this part.
 torch.manual_seed(42)
