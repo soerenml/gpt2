@@ -195,9 +195,10 @@ class GPT(nn.Module):
         # Final (linear) classifier head.
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-
+    # todo - understand this function.
     def forward(self, idx):
         # idx is of shape (B, T)
+        # T tokens in each of the B sequences.
         B, T = idx.size()
         # block_size = maximum length of input sequences
         assert T <= self.config.block_size, "Cannot forward, model block size is exhausted."
@@ -205,14 +206,27 @@ class GPT(nn.Module):
         # arrange returns a 1D tensor with values from the start (0 in this case) to the end (T), excluding T.
         # the function is similar to Python’s built-in range function but returns a tensor instead of a list.
         pos = torch.arange(0, T, type=torch.long, device=idx.device) # Shape (T)
+        print(pos)
+
+        # positional encoding of the transformer block
         pos_emd = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
+
+        # token embeddings of the transformer block
         tok_emd = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+
+        # sum the token and position embeddings.
         x = tok_emd + pos_emd # sum the token and position embeddings.
+
         # forward the blocks to the transformer
+        # the transformer block consists of several layers
+        # with the loop function we iterate through each layer
         for block in self.transformer.h:
             x = block(x)
-        # forward the final layer norm to the classifier
+
+        # forward to the final layer normalization
         x = self.transformer.ln_f(x)
+
+        # forward to the final classifier head
         logits = self.lm_head(x) # (B, T, vocab_size)
         return logits
 
@@ -268,3 +282,35 @@ class GPT(nn.Module):
 
 model = GPT.from_pretrained('gpt2')
 print("did't crash yay")
+
+num_return_sequences = 5
+max_length = 30
+model = GPT.from_pretrained('gpt2')
+model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
+model.to('cuda') # we are moving all the model to GPU
+
+import tiktoken
+enc = tiktoken.get_encoding('gpt2')
+tokens = enc.encode("Hello, I'm a language model,")
+tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # In this case it's (5, 8) tokens - five rows of eight tokens
+# x is the idx for the forward function
+x = tokens.to('cuda')
+
+# todo - understand this part.
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+while x.size(1) < max_length:
+    with torch.no_grad():
+        logits = model(x)
+        logits = logits[:, -1, :]
+        probs = F.softmax(logits, dim=-1)
+        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+        ix = torch.multinomial(topk_probs, 1)
+        xcol = torch.gather(topk_indices, -1, ix)
+        x = torch.cat((x, xcol), 1)
+
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
