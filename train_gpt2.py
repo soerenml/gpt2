@@ -41,8 +41,9 @@ class CasualSelfAttention(nn.Module):
         self.n_embd = config.n_embd
 
         """
-        Create mask:
+        Create mask
         Block size is the maximum length of input sequences.
+        EX3
         """
         self.register_buffer( # buffer is a tensor that is not updated during backpropagation.
             name='bias',
@@ -66,19 +67,28 @@ class CasualSelfAttention(nn.Module):
         # We are basically expanding the dimensionality of the embedding.
         qkv = self.c_attn(x)
 
-        # See example E4 in   the core ideas.
+        """
+        Splitting (E3)
+        The qkv tensor is split into three parts: q, k, and v.
+        """
         q, k, v = qkv.split(self.n_embd, dim=2)
 
-        # TODO - understand this part.
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        # attention (materializes the large (T, T) matrix for al the queries and keys).
 
+        """
+        Attention computation (E4)
+        """
         # (Q@K)/sqrt(embedding lenth)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # k.size(-1) is the length of the embeddings.
 
-
+        """
+        Mask
+        At this point we have a full attention matrix, backward and forward.
+        Nevertheless, we need to mask out the positions so only backward looking is possible.
+        """
+        # TODO - understand this part
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs
