@@ -21,36 +21,64 @@ class CasualSelfAttention(nn.Module):
     """
     def __init__(self, config):
         super().__init__()
+        # todo understand this part
         assert config.n_embd % config.n_head == 0 # % is the modulo operator (31 % 10 = 1). n_embd must be fully divisible by n_head.
+
         # key, query, value projections for all heads but in a batch.
-        # the nn.Linear layer computes a linear transformation of the input data.
+
+        """
+        nn.Linear()
+        The nn.Linear layer computes a linear transformation of the input data.
+        It creates an output, three times the size of the input (embedding dimensionality) [see core ideas E1]
+        """
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
+
         # Output projection.
         self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-        # regularization
+
+        # Number of attention heads abd embedding dimensionality.
         self.n_head = config.n_head
         self.n_embd = config.n_embd
-        # Block size is the maximum length of input sequences.
-        # Tril returns the lower triangular part of the matrix (2-D tensor)
-        self.register_buffer(
+
+        """
+        Create mask:
+        Block size is the maximum length of input sequences.
+        """
+        self.register_buffer( # buffer is a tensor that is not updated during backpropagation.
             name='bias',
-            tensor=torch.tril(torch.ones(config.block_size, config.block_size)).view(1, 1, config.block_size, config.block_size) # reshape the tensor to (1, 1, block_size, block_size)
+            tensor=torch.tril( # creates a lower triangular matrix.
+                torch.ones(config.block_size, config.block_size)) # Creates a matrix filled with ones (this is needed as torch.tril() needs a tensor as input).
+                .view(1, 1, config.block_size, config.block_size) # reshape the tensor to (1, 1, block_size, block_size)
         )
 
+        """Shape of the Mask:
+        •	(1, 1, config.block_size, config.block_size):
+        •	The first dimension (batch size) is 1 because this mask is used for all sequences in the batch.
+        •	The second dimension (number of heads) is 1 because the same mask is typically applied to all heads in the attention mechanism.
+        •	The third and fourth dimensions are config.block_size to create a square matrix that masks out future positions in the sequence.
+        """
+
     def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality.
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality. In this case: [5, 17, 768]
         # 'nh' is the number of heads, 'hs' ist the head size, 'C' (number of channels) = nh * hs.
         # By using a single linear layer to compute the concatenated Q, K, and V matrices in one go, we reduce computational overhead compared to applying three separate linear transformations.
         # This combined computation is more efficient and helps in leveraging hardware accelerations like GPUs and TPUs effectively.
-        # todo - visualize this.
+        # We are basically expanding the dimensionality of the embedding.
         qkv = self.c_attn(x)
+
+        # See example E4 in   the core ideas.
         q, k, v = qkv.split(self.n_embd, dim=2)
+
+        # TODO - understand this part.
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         # attention (materializes the large (T, T) matrix for al the queries and keys).
+
         # (Q@K)/sqrt(embedding lenth)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # k.size(-1) is the length of the embeddings.
+
+
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs
