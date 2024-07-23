@@ -267,7 +267,7 @@ class GPT(nn.Module):
         logits = self.lm_head(x) # (B, T, vocab_size)
         return logits
 
-
+    # --------------- Get the configuration of the model ---------------
     @classmethod
     def from_pretrained(cls, model_type):
         """Loads pretrained GPT-2 model weights from huggingface"""
