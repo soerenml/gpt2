@@ -21,61 +21,49 @@ class CasualSelfAttention(nn.Module):
     """
     def __init__(self, config):
         super().__init__()
-        # todo understand this part
-        assert config.n_embd % config.n_head == 0 # % is the modulo operator (31 % 10 = 1). n_embd must be fully divisible by n_head.
 
-        # key, query, value projections for all heads but in a batch.
+        assert config.n_embd % config.n_head == 0 # % = modulo operator (31 % 10 = 1). n_embd must be fully divisible by n_head.
 
         """
-        nn.Linear()
-        The nn.Linear layer computes a linear transformation of the input data.
-        It creates an output, three times the size of the input (embedding dimensionality) [see core ideas E1]
+        nn.Linear() [E1]
         """
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
-
-        # Output projection.
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-
-        # Number of attention heads abd embedding dimensionality.
-        self.n_head = config.n_head
-        self.n_embd = config.n_embd
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd) # output projection
+        self.n_head = config.n_head # numer attention heads
+        self.n_embd = config.n_embd # embedding dimensionality
 
         """
-        Create mask
-        Block size is the maximum length of input sequences.
-        EX3
+        Mask [E2]
         """
-        self.register_buffer( # buffer is a tensor that is not updated during backpropagation.
+        self.register_buffer( # buffer = tensor that is not updated during backpropagation
             name='bias',
-            tensor=torch.tril( # creates a lower triangular matrix.
-                torch.ones(config.block_size, config.block_size)) # Creates a matrix filled with ones (this is needed as torch.tril() needs a tensor as input).
-                .view(1, 1, config.block_size, config.block_size) # reshape the tensor to (1, 1, block_size, block_size)
+            tensor=torch.tril( # creates a lower triangular matrix
+                torch.ones(config.block_size, config.block_size)) # creates a matrix filled with ones (this is needed as torch.tril() needs a tensor as input)
+                .view(1, 1, config.block_size, config.block_size) # reshape tensor to (1, 1, block_size, block_size) - block_size = maximum length of input sequences
         )
-
-        """Shape of the Mask:
-        •	(1, 1, config.block_size, config.block_size):
-        •	The first dimension (batch size) is 1 because this mask is used for all sequences in the batch.
-        •	The second dimension (number of heads) is 1 because the same mask is typically applied to all heads in the attention mechanism.
-        •	The third and fourth dimensions are config.block_size to create a square matrix that masks out future positions in the sequence.
+        """
+            Shape of the Mask:
+            •	(1, 1, config.block_size, config.block_size):
+            •	The first dimension (batch size) is 1 because this mask is used for all sequences in the batch.
+            •	The second dimension (number of heads) is 1 because the same mask is typically applied to all heads in the attention mechanism.
+            •	The third and fourth dimensions are config.block_size to create a square matrix that masks out future positions in the sequence.
         """
 
     def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality. In this case: [5, 17, 768]
-        # 'nh' is the number of heads, 'hs' ist the head size, 'C' (number of channels) = nh * hs.
-        # By using a single linear layer to compute the concatenated Q, K, and V matrices in one go, we reduce computational overhead compared to applying three separate linear transformations.
-        # This combined computation is more efficient and helps in leveraging hardware accelerations like GPUs and TPUs effectively.
-        # We are basically expanding the dimensionality of the embedding.
-        qkv = self.c_attn(x)
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality. Here, [5, 17, 768]
+
+        # TODO - Add core idea.
+        qkv = self.c_attn(x) # by using a single linear layer to compute the concatenated Q, K, and V matrices in one go, we reduce computational overhead compared to applying three separate linear transformations.
 
         """
-        Splitting (E3)
-        The qkv tensor is split into three parts: q, k, and v.
+        Splitting [E3]
         """
-        q, k, v = qkv.split(self.n_embd, dim=2)
+        q, k, v = qkv.split(self.n_embd, dim=2) # split the concatenated q, k, v matrices along the last dimension (C = embedding dimensionality)
 
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        # We devide the dimensionality of the embeddings by the number of heads as they will be concatenated later on.
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
 
         """
         Attention computation (E4)
@@ -89,9 +77,13 @@ class CasualSelfAttention(nn.Module):
         Nevertheless, we need to mask out the positions so only backward looking is possible.
         """
         # TODO - understand this part
+        # The name 'bias' us the lower triangular matrix we created in the __init__ function.
+        # It's a buffer, so it's not updated during backpropagation.
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs
+        y = att @ v # matrix multiplication attention * values
+
+
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         # output projection
         y = self.c_proj(y)
@@ -267,7 +259,7 @@ class GPT(nn.Module):
         logits = self.lm_head(x) # (B, T, vocab_size)
         return logits
 
-    # --------------- Get the configuration of the model ---------------
+    #
     @classmethod
     def from_pretrained(cls, model_type):
         """Loads pretrained GPT-2 model weights from huggingface"""
