@@ -22,7 +22,7 @@ class CasualSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
 
-        assert config.n_embd % config.n_head == 0 # % = modulo operator (31 % 10 = 1). n_embd must be fully divisible by n_head.
+        assert config.n_embd % config.n_head == 0 # % = modulo operator (31 % 10 = 1). # See [D1]
 
         """
         nn.Linear() [E1]
@@ -52,7 +52,6 @@ class CasualSelfAttention(nn.Module):
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality. Here, [5, 17, 768]
 
-        # TODO - Add core idea.
         qkv = self.c_attn(x) # by using a single linear layer to compute the concatenated Q, K, and V matrices in one go, we reduce computational overhead compared to applying three separate linear transformations.
 
         """
@@ -60,7 +59,7 @@ class CasualSelfAttention(nn.Module):
         """
         q, k, v = qkv.split(self.n_embd, dim=2) # split the concatenated q, k, v matrices along the last dimension (C = embedding dimensionality)
 
-        # We devide the dimensionality of the embeddings by the number of heads as they will be concatenated later on.
+        # We devide the dimensionality of the embeddings by the number of heads as they will be concatenated later on. See [D1]
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # -> (B, n_head, T, C)
@@ -69,20 +68,19 @@ class CasualSelfAttention(nn.Module):
         Attention computation (E4)
         """
         # (Q@K)/sqrt(embedding lenth)
+        # This is the part which is most computationally expensive.
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # k.size(-1) is the length of the embeddings.
 
         """
-        Mask
+        Mask (E5)
         At this point we have a full attention matrix, backward and forward.
         Nevertheless, we need to mask out the positions so only backward looking is possible.
         """
-        # TODO - understand this part
         # The name 'bias' us the lower triangular matrix we created in the __init__ function.
         # It's a buffer, so it's not updated during backpropagation.
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
-        y = att @ v # matrix multiplication attention * values
-
+        y = att @ v # matrix multiplication attention * values - here we are going to use kv-caching in the future.
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         # output projection
@@ -146,26 +144,14 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd) # This part is different from the original transformer model.
+        self.ln_1 = nn.LayerNorm(config.n_embd) # Different from the original transformer model: We do layer normalization before the attention block.
         self.attn = CasualSelfAttention(config)
         self.ln_2 = nn.LayerNorm(config.n_embd)
-        self.mlp = MLP(config) # Multi-layer perceptron or feed-forward network.
+        self.mlp = MLP(config)
+
 
     def forward(self, x):
-        """
-        Forward pass of the block.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-
-        Returns:
-            torch.Tensor: Output tensor.
-
-        """
-        # We apply layer normalization -> send normalized values to the attention block.
-        # We add the attention block output to the input tensor (x = x + self.attn(self.ln_1(x))). todo - what would happend if negelct x +?
-        x = x + self.attn(self.ln_1(x)) # The attention block is the only time the embeddings 'speak' to each other.
-        # We apply layer normalization -> send normalized values to the feed-forward network.
+        x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -209,38 +195,34 @@ class GPT(nn.Module):
         super().__init__()
         self.config = config
 
-        # ModuleDict allows us to store a collection of modules in a single object.
-        # We can access the modules using keys.
+        # ModuleDict allows us to store a collection of modules in a single object. We can access the modules using keys.
         self.transformer = nn.ModuleDict(dict(
-            # Token embeddings.
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            # Positional encodings.
-            wpe = nn.Embedding(config.block_size, config.n_embd),
-            # Core part of the transformer.
-            # h stand for hidden and contains the blocks we are stacking upon each other.
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            # Final layer normalization.
-            ln_f = nn.LayerNorm(config.n_embd),
+            wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings.
+            wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings.
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other (E7)
+            ln_f = nn.LayerNorm(config.n_embd), # Final layer normalization.
         ))
-        # Final (linear) classifier head.
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
 
     # todo - understand this function.
     def forward(self, idx):
-        # idx is of shape (B, T)
-        # T tokens in each of the B sequences.
-        B, T = idx.size()
-        # block_size = maximum length of input sequences
-        assert T <= self.config.block_size, "Cannot forward, model block size is exhausted."
-        # forward the token and position embeddings.
+
+        B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
+        assert T <= self.config.block_size, "Cannot forward, model block size is exhausted." # block_size = maximum length of input sequences (block size is the maximum length of input sequences)
+
+
+        """
+        Positional embeddings
+        """
+        # TODO - visulaization of positional embeddings.
         # arrange returns a 1D tensor with values from the start (0 in this case) to the end (T), excluding T.
         # the function is similar to Python’s built-in range function but returns a tensor instead of a list.
         pos = torch.arange(start=0, end=T, step=1, dtype=torch.long, device=idx.device) # Shape (T)
-
-        # positional encoding of the transformer block
         pos_emd = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
 
-        # token embeddings of the transformer block
+        """
+        Token embeddings
+        """
         tok_emd = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
 
         # sum the token and position embeddings.
