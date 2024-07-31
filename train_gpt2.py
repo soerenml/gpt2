@@ -185,41 +185,44 @@ class GPT(nn.Module):
         super().__init__()
         self.config = config
 
-        # ModuleDict allows us to store a collection of modules in a single object. We can access the modules using keys.
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings.
-            wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings.
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other (E7)
-            ln_f = nn.LayerNorm(config.n_embd), # Final layer normalization.
-        ))
+        """
+        ModuleDict [E8]
+        """
+        self.transformer = nn.ModuleDict(
+            dict(
+                wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings.
+                wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings.
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other (E7)
+                ln_f = nn.LayerNorm(config.n_embd), # Final layer normalization.
+            )
+        )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
 
-    # todo - understand this function.
-    def forward(self, idx):
 
+    def forward(self, idx):
         B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
+
+        """
+        Block size vs. sequence length
+        Sequence length (T) is the length of the input sequence, which can be less than or equal to the block size.
+        The block size is the maximum length of input sequences that the model can process.
+        """
         assert T <= self.config.block_size, "Cannot forward, model block size is exhausted." # block_size = maximum length of input sequences (block size is the maximum length of input sequences)
 
-
         """
-        Positional embeddings
+        Positional embeddings [E9]
         """
-        # TODO - visulaization of positional embeddings.
-        # arrange returns a 1D tensor with values from the start (0 in this case) to the end (T), excluding T.
-        # the function is similar to Python’s built-in range function but returns a tensor instead of a list.
         pos = torch.arange(start=0, end=T, step=1, dtype=torch.long, device=idx.device) # Shape (T)
         pos_emd = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
 
         """
-        Token embeddings
+        Token embeddings [E10]
         """
         tok_emd = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+        x = tok_emd + pos_emd # sum the token- and position embeddings
 
-        # sum the token and position embeddings.
-        x = tok_emd + pos_emd # sum the token and position embeddings.
-
-        # Feedback embeddings to the transformer blocks.
-        # As we have n blocks, we use a loop function to iterate through each layer
+        # Feed embeddings through the transformer blocks
+        # As we have n blocks, we use a loop function to iterate through each block
         for block in self.transformer.h:
             x = block(x)
 
@@ -230,7 +233,7 @@ class GPT(nn.Module):
         logits = self.lm_head(x) # (B, T, vocab_size)
         return logits
 
-    #
+
     @classmethod
     def from_pretrained(cls, model_type):
         """Loads pretrained GPT-2 model weights from huggingface"""
@@ -247,8 +250,9 @@ class GPT(nn.Module):
         }[model_type]
         config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints
         config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
+
         # create a from-scratch initialized minGPT model
-        config = GPTConfig(**config_args)
+        config = GPTConfig(**config_args) # Update our GPTConfig class
         model = GPT(config)
         sd = model.state_dict()
         sd_keys = sd.keys()
@@ -263,6 +267,7 @@ class GPT(nn.Module):
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')] # ignore these, just a buffer
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')] # same, just the mask (buffer)
         transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
+
         # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
         # this means that we have to transpose these weights when we import them
         assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
@@ -280,24 +285,28 @@ class GPT(nn.Module):
 
         return model
 
+
+# ---------------------------------------- Load model with model weights ----------------------------------------
 num_return_sequences = 5
 max_length = 30
 model = GPT.from_pretrained('gpt2')
 model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
 model.to('cpu') # we are moving all the model to GPU
 
+# ---------------------------------------- Tokenization ----------------------------------------
 import tiktoken
 enc = tiktoken.get_encoding('gpt2')
 tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # In this case it's (5, 8) tokens - five rows of eight tokens
-# x is the idx for the forward function
-x = tokens.to('cpu')
-print(x.device)
+x = tokens.to('cpu') # x is the idx for the forward function
 
+
+# ---------------------------------------- Generation ----------------------------------------
 # todo - understand this part.
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
+
 while x.size(1) < max_length:
     with torch.no_grad():
         logits = model(x)
