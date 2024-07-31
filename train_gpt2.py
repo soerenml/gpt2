@@ -21,16 +21,18 @@ class CasualSelfAttention(nn.Module):
     """
     def __init__(self, config):
         super().__init__()
-
         assert config.n_embd % config.n_head == 0 # % = modulo operator (31 % 10 = 1). # See [D1]
+
+        self.n_head = config.n_head # numer attention heads
+        self.n_embd = config.n_embd # embedding dimensionality
 
         """
         nn.Linear() [E1]
+        By using a single linear layer to compute the concatenated Q, K, and V matrices in one go,
+        we reduce computational overhead compared to applying three separate linear transformations.
         """
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
         self.c_proj = nn.Linear(config.n_embd, config.n_embd) # output projection
-        self.n_head = config.n_head # numer attention heads
-        self.n_embd = config.n_embd # embedding dimensionality
 
         """
         Mask [E2]
@@ -51,8 +53,7 @@ class CasualSelfAttention(nn.Module):
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality. Here, [5, 17, 768]
-
-        qkv = self.c_attn(x) # by using a single linear layer to compute the concatenated Q, K, and V matrices in one go, we reduce computational overhead compared to applying three separate linear transformations.
+        qkv = self.c_attn(x)
 
         """
         Splitting [E3]
@@ -83,8 +84,7 @@ class CasualSelfAttention(nn.Module):
         y = att @ v # matrix multiplication attention * values - here we are going to use kv-caching in the future.
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        # output projection
-        y = self.c_proj(y)
+        y = self.c_proj(y) # output projection
         return y
 
 
@@ -110,16 +110,6 @@ class MLP(nn.Module):
 
 
     def forward(self, x):
-        """
-        Forward pass of the MLP module.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-
-        Returns:
-            torch.Tensor: Output tensor after passing through the MLP.
-
-        """
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
@@ -228,9 +218,8 @@ class GPT(nn.Module):
         # sum the token and position embeddings.
         x = tok_emd + pos_emd # sum the token and position embeddings.
 
-        # forward the blocks to the transformer
-        # the transformer block consists of several layers
-        # with the loop function we iterate through each layer
+        # Feedback embeddings to the transformer blocks.
+        # As we have n blocks, we use a loop function to iterate through each layer
         for block in self.transformer.h:
             x = block(x)
 
