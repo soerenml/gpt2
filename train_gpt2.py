@@ -287,8 +287,10 @@ class GPT(nn.Module):
 
 
 # ---------------------------------------- Load model with model weights ----------------------------------------
+# This is the number of sequences we want to generate.
+# We take our input sequence and generate multiple sequences based on it.
 num_return_sequences = 5
-max_length = 30
+max_length = 30 # maximum length of the generated sequences
 model = GPT.from_pretrained('gpt2')
 model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
 model.to('cpu') # we are moving all the model to GPU
@@ -298,8 +300,8 @@ import tiktoken
 enc = tiktoken.get_encoding('gpt2')
 tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
-tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # In this case it's (5, 8) tokens - five rows of eight tokens
-x = tokens.to('cpu') # x is the idx for the forward function
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # Repeats this tensor along the specified dimensions.
+x = tokens.to('cpu') # x is the idx for the forward function. I.e. the token we are feeding into the model.
 
 
 # ---------------------------------------- Generation ----------------------------------------
@@ -307,14 +309,31 @@ x = tokens.to('cpu') # x is the idx for the forward function
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
+print(f"\n\n Tokens to be feed into the model: \n\n {x}  \n\n with shape: {x.shape} \n\n")
+
 while x.size(1) < max_length:
-    with torch.no_grad():
+    with torch.no_grad(): # we are not training the model (no gradient calculation), only using it to generate text
+        # We pass the current sequence x (tensor of token IDs) to the model
+        # The model outputs the logits, which represent the unnormalized probabilities of the next token
         logits = model(x)
+        # We start out with a shape of 8 as our input tensor x contains 8 token IDs
+        # After each iteration, we add a new token to the sequence, so the shape of x grows by 1
+        print(logits.shape)
+        # We extract the logits for the last token in the sequence (-1)
+        # This is because we only care about predicting the next token based on the current context
         logits = logits[:, -1, :]
+        # We apply a softmax function to the logits of the last token
         probs = F.softmax(logits, dim=-1)
-        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+        # torch.topk selects the top 50 probabilities (topk_probs) and their corresponding indices (topk_indices)
+        # along the last dimension (vocabulary dimension).
+        # this is an ordered tensor with the highest probabilities at the beginning
+        topk_probs, topk_indices = torch.topk(probs, 3, dim=-1)
+        # E[11]
         ix = torch.multinomial(topk_probs, 1)
+        # We use torch.gather to extract the actual token ID from the top 50 indices (topk_indices) based on the sampled index (ix).
+        # xcol becomes a one-dimensional tensor containing the sampled token ID.
         xcol = torch.gather(topk_indices, -1, ix)
+        # We concatenate the sampled token ID to the current sequence x.
         x = torch.cat((x, xcol), 1)
 
 for i in range(num_return_sequences):
