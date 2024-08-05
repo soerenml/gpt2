@@ -3,8 +3,15 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
+import tiktoken
 
-# ---------------------------------------- Attention mechanism ----------------------------------------
+from helper_functions import device_info
+
+device = device_info()
+
+
+# --------------------------------------------------------------------------------
+# Attention mechanism module
 class CasualSelfAttention(nn.Module):
     """
     CasualSelfAttention module performs self-attention operation on the input tensor.
@@ -88,7 +95,8 @@ class CasualSelfAttention(nn.Module):
         return y
 
 
-# ---------------------------------------- MLP module ----------------------------------------
+# --------------------------------------------------------------------------------
+# Multi-Layer Perceptron (MLP) module
 class MLP(nn.Module):
     """
     Multi-Layer Perceptron (MLP) module.
@@ -116,7 +124,8 @@ class MLP(nn.Module):
         return x
 
 
-# ---------------------------------------- Block of the GPT model ----------------------------------------
+# --------------------------------------------------------------------------------
+# GPT2 block
 class Block(nn.Module):
     """
     A block in the GPT-2 model.
@@ -146,7 +155,8 @@ class Block(nn.Module):
         return x
 
 
-# ---------------------------------------- Configuration class for GPT model ----------------------------------------
+# --------------------------------------------------------------------------------
+# Configuration class for GPT model
 @dataclass
 class GPTConfig:
     """
@@ -166,34 +176,20 @@ class GPTConfig:
     n_embd: int = 768
 
 
-# ---------------------------------------- Skeleton of the GPT model ----------------------------------------
+# --------------------------------------------------------------------------------
+# Skeleton of the GPT model
 class GPT(nn.Module):
-    """
-    GPT (Generative Pre-trained Transformer) model.
-
-    Args:
-        config (object): Configuration object containing model hyperparameters.
-
-    Attributes:
-        config (object): Configuration object containing model hyperparameters.
-        transformer (nn.ModuleDict): Module dictionary containing various components of the transformer.
-        lm_head (nn.Linear): Linear layer for the final classification head.
-
-    """
-
     def __init__(self, config):
         super().__init__()
         self.config = config
 
-        """
-        ModuleDict [E8]
-        """
+        # ModuleDict [E8]
         self.transformer = nn.ModuleDict(
             dict(
                 wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings.
                 wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings.
                 h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other (E7)
-                ln_f = nn.LayerNorm(config.n_embd), # Final layer normalization.
+                ln_f = nn.LayerNorm(config.n_embd), # Normalization layer.
             )
         )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
@@ -291,21 +287,46 @@ class GPT(nn.Module):
 # We take our input sequence and generate multiple sequences based on it.
 num_return_sequences = 5
 max_length = 30 # maximum length of the generated sequences
-model = GPT.from_pretrained('gpt2')
-model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
-model.to('cpu') # we are moving all the model to GPU
 
-# ---------------------------------------- Tokenization ----------------------------------------
+# !!! This is the important part !!!
+# If we use this line, we are loading the model from the transformers library.
+#model = GPT.from_pretrained('gpt2')
+
+# If we use this line we are loading a model that is randomly initialized.
+model = GPT(GPTConfig())
+
+model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
+model.to(device) # we are moving all the model to the device at hand.
+
+
+# --------------------------------------------------------------------------------
+# Data pipeline
+# TODO
+with open("input.txt", "r") as file:
+    text = file.read()
+data = text[:1000]
+enc = tiktoken.get_encoding('gpt2')
+tokens = enc.encode(data)
+B, T = 4, 32
+buf = torch.tensor(tokens[:B*T+1])
+x = buf[:-1].view(B,T)
+y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
+
+
+
+# --------------------------------------------------------------------------------
+# Tokenization
+
 import tiktoken
 enc = tiktoken.get_encoding('gpt2')
 tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # Repeats this tensor along the specified dimensions.
-x = tokens.to('cpu') # x is the idx for the forward function. I.e. the token we are feeding into the model.
+x = tokens.to(device) # x is the idx for the forward function. I.e. the token we are feeding into the model.
 
 
-# ---------------------------------------- Generation ----------------------------------------
-# todo - understand this part.
+# --------------------------------------------------------------------------------
+# Generation
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
@@ -327,7 +348,7 @@ while x.size(1) < max_length:
         # torch.topk selects the top 50 probabilities (topk_probs) and their corresponding indices (topk_indices)
         # along the last dimension (vocabulary dimension).
         # this is an ordered tensor with the highest probabilities at the beginning
-        topk_probs, topk_indices = torch.topk(probs, 3, dim=-1)
+        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
         # E[11]
         ix = torch.multinomial(topk_probs, 1)
         # We use torch.gather to extract the actual token ID from the top 50 indices (topk_indices) based on the sampled index (ix).
@@ -336,7 +357,9 @@ while x.size(1) < max_length:
         # We concatenate the sampled token ID to the current sequence x.
         x = torch.cat((x, xcol), 1)
 
+# Print predicted tokens
 for i in range(num_return_sequences):
     tokens = x[i, :max_length].tolist()
+    # Here we decode the token IDs back to text.
     decoded = enc.decode(tokens)
     print(">", decoded)
