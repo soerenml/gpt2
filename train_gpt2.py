@@ -9,6 +9,26 @@ from helper_functions import device_info
 
 device = device_info()
 
+# --------------------------------------------------------------------------------
+# Configuration class for GPT model
+@dataclass
+class GPTConfig:
+    """
+    Configuration class for GPT model.
+
+    Attributes:
+        block_size (int): The maximum length of input sequences.
+        vocab_size (int): The size of the vocabulary.
+        n_layer (int): The number of layers in the model.
+        n_head (int): The number of attention heads in the model.
+        n_embd (int): The dimensionality of the embeddings.
+    """
+    block_size: int = 1024
+    vocab_size: int = 50257
+    n_layer: int = 12
+    n_head: int = 12
+    n_embd: int = 768
+
 
 # --------------------------------------------------------------------------------
 # Attention mechanism module
@@ -154,28 +174,6 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln_2(x))
         return x
 
-
-# --------------------------------------------------------------------------------
-# Configuration class for GPT model
-@dataclass
-class GPTConfig:
-    """
-    Configuration class for GPT model.
-
-    Attributes:
-        block_size (int): The maximum length of input sequences.
-        vocab_size (int): The size of the vocabulary.
-        n_layer (int): The number of layers in the model.
-        n_head (int): The number of attention heads in the model.
-        n_embd (int): The dimensionality of the embeddings.
-    """
-    block_size: int = 1024
-    vocab_size: int = 50257
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
-
-
 # --------------------------------------------------------------------------------
 # Skeleton of the GPT model
 class GPT(nn.Module):
@@ -195,7 +193,7 @@ class GPT(nn.Module):
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
 
 
-    def forward(self, idx):
+    def forward(self, idx, targets=None):
         B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
 
         """
@@ -227,7 +225,12 @@ class GPT(nn.Module):
 
         # forward to the final classifier head
         logits = self.lm_head(x) # (B, T, vocab_size)
-        return logits
+
+        loss = None
+
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+        return logits, loss
 
 
     @classmethod
@@ -283,20 +286,14 @@ class GPT(nn.Module):
 
 
 # ---------------------------------------- Load model with model weights ----------------------------------------
-# This is the number of sequences we want to generate.
-# We take our input sequence and generate multiple sequences based on it.
-num_return_sequences = 5
+num_return_sequences = 5 # number of sequences to generate.
 max_length = 30 # maximum length of the generated sequences
 
-# !!! This is the important part !!!
-# If we use this line, we are loading the model from the transformers library.
-#model = GPT.from_pretrained('gpt2')
+#model = GPT.from_pretrained('gpt2') # load the model from the transformers library.
+#model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
 
-# If we use this line we are loading a model that is randomly initialized.
-model = GPT(GPTConfig())
-
-model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
-model.to(device) # we are moving all the model to the device at hand.
+#model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
+#model.to(device) # we are moving all the model to the device at hand.
 
 
 # --------------------------------------------------------------------------------
@@ -309,17 +306,31 @@ enc = tiktoken.get_encoding('gpt2')
 tokens = enc.encode(data)
 B, T = 4, 32
 buf = torch.tensor(tokens[:B*T+1])
+buf = buf.to(device) # to(device) moves the tensor to the device at hand. But it's not stateful (todo - add explaination)
 x = buf[:-1].view(B,T)
 y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
 
+# get logics
+model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
+model.to(device) # we are moving all the model to the device at hand.
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
+
+for i in range(50):
+    optimizer.zero_grad() # always set gradients to zero
+    logits, loss = model(x, y)
+    loss.backward()
+    optimizer.step()
+    print(f"step {i}, loss: {loss.item()}")
 
 
 # --------------------------------------------------------------------------------
-# Tokenization
+# Tokenization - first example
 
 import tiktoken
 enc = tiktoken.get_encoding('gpt2')
-tokens = enc.encode("Hello, I'm a language model,")
+#tokens = enc.encode("Hello, I'm a language model,")
+tokens = enc.encode("What is the meaning of life?")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # Repeats this tensor along the specified dimensions.
 x = tokens.to(device) # x is the idx for the forward function. I.e. the token we are feeding into the model.
@@ -336,7 +347,7 @@ while x.size(1) < max_length:
     with torch.no_grad(): # we are not training the model (no gradient calculation), only using it to generate text
         # We pass the current sequence x (tensor of token IDs) to the model
         # The model outputs the logits, which represent the unnormalized probabilities of the next token
-        logits = model(x)
+        logits, loss = model(x)
         # We start out with a shape of 8 as our input tensor x contains 8 token IDs
         # After each iteration, we add a new token to the sequence, so the shape of x grows by 1
         print(logits.shape)
