@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from email.headerregistry import DateHeader
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -298,19 +299,41 @@ max_length = 30 # maximum length of the generated sequences
 
 # --------------------------------------------------------------------------------
 # Data pipeline
-# TODO
-with open("input.txt", "r") as file:
-    text = file.read()
-data = text[:1000]
-enc = tiktoken.get_encoding('gpt2')
-tokens = enc.encode(data)
-B, T = 4, 32
-buf = torch.tensor(tokens[:B*T+1])
-buf = buf.to(device) # to(device) moves the tensor to the device at hand. But it's not stateful (todo - add explaination)
-x = buf[:-1].view(B,T)
-y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
+import tiktoken
+
+class DataloaderLite():
+    def __init__(self, B, T):
+        self.B = B
+        self.T = T
+
+        with open("input.txt", "r") as file:
+            text = file.read()
+        enc = tiktoken.get_encoding('gpt2')
+        tokens = enc.encode(text)
+        self.tokens = torch.tensor(tokens)
+
+        print(f"Loaded {len(self.tokens)} tokens")
+        print(f"1 epoch = {len(self.tokens) // (B * T)} batches")
+
+        # state
+        self.current_position = 0
+
+    def next_batch(self):
+        B, T = self.B, self.T
+
+        B, T = 4, 32
+        buf = self.tokens[self.current_position : self.current_position+B*T+1]
+        #buf = buf.to(device) # to(device) moves the tensor to the device at hand. But it's not stateful (todo - add explaination)
+        x = buf[:-1].view(B,T)
+        y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
+        self.current_position += B*T
+        if self.current_position + (B * T + 1) > len(self.tokens):
+            self.current_position = 0
+        return x, y
 
 # get logics
+
+train_loader = DataloaderLite(B=4, T=32)
 model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
 model.to(device) # we are moving all the model to the device at hand.
 
@@ -318,6 +341,8 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
 
 for i in range(50):
     optimizer.zero_grad() # always set gradients to zero
+    x, y = train_loader.next_batch()
+    x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
     logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
