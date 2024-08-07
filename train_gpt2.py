@@ -193,6 +193,10 @@ class GPT(nn.Module):
         )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
 
+        # weight sharing scheme
+        # TODO understand this part
+        self.transformer.wte.weight= self.lm_head.weight
+
 
     def forward(self, idx, targets=None):
         B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
@@ -327,6 +331,8 @@ class DataloaderLite():
         x = buf[:-1].view(B,T)
         y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
         self.current_position += B*T
+
+        # In case we run out of data, we reset the position to the beginning of the data.
         if self.current_position + (B * T + 1) > len(self.tokens):
             self.current_position = 0
         return x, y
