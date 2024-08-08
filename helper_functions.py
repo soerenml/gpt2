@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import torch
 
 def device_info():
