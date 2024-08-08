@@ -101,7 +101,6 @@ tokens = enc.encode("What is the meaning of life?")
 tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # Repeats this tensor along the specified dimensions.
 x = tokens.to(device) # x is the idx for the forward function. I.e. the token we are feeding into the model.
-torch.save(model.state_dict(), 'model.pth')
 
 
 # --------------------------------------------------------------------------------

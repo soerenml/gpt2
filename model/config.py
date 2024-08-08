@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-# --------------------------------------------------------------------------------
-# Configuration class for GPT model
 @dataclass
 class GPTConfig:
     """
