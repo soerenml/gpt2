@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 from model.block.block import Block
 from model.config import GPTConfig
-from dataclasses import dataclass
+
 
 class GPT(nn.Module):
     def __init__(self, config):
@@ -39,7 +39,12 @@ class GPT(nn.Module):
             None
         """
         if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            std = 0.02
+            if hasattr(module, 'NANOGPT_SCALE_INIT'):
+                # We are using 2 * as we have the block and the MLP
+                # TODO - understand this part
+                std *= (2 * self.config.n_layer) ** -0.5
+            torch.nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
@@ -47,13 +52,7 @@ class GPT(nn.Module):
 
 
     def forward(self, idx, targets=None):
-        B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
-
-        """
-        Block size vs. sequence length
-        Sequence length (T) is the length of the input sequence, which can be less than or equal to the block size.
-        The block size is the maximum length of input sequences that the model can process.
-        """
+        B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length) [F1]
         assert T <= self.config.block_size, "Cannot forward, model block size is exhausted." # block_size = maximum length of input sequences (block size is the maximum length of input sequences)
 
         """
@@ -68,15 +67,14 @@ class GPT(nn.Module):
         tok_emd = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
         x = tok_emd + pos_emd # sum the token- and position embeddings
 
-        # Feed embeddings through the transformer blocks
-        # As we have n blocks, we use a loop function to iterate through each block
+        # Iterate through each block
         for block in self.transformer.h:
             x = block(x)
 
-        # forward to the final layer normalization
+        # Final layer normalization
         x = self.transformer.ln_f(x)
 
-        # forward to the final classifier head
+        # Final classifier head
         logits = self.lm_head(x) # (B, T, vocab_size)
 
         loss = None
