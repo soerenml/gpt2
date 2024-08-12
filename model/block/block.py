@@ -23,7 +23,7 @@ class Block(nn.Module):
         self.ln_1 = nn.LayerNorm(config.n_embd) # Different from the original transformer model: We do layer normalization before the attention block.
         self.attn = CasualSelfAttention(config)
         self.ln_2 = nn.LayerNorm(config.n_embd)
-        self.mlp = MLP(config)
+        self.mlp  = MLP(config)
 
 
     def forward(self, x):

@@ -1,87 +1,45 @@
-from dataclasses import dataclass
-from email.headerregistry import DateHeader
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
-import math
 import tiktoken
 from helper_functions import device_info
 
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+
 device = device_info()
 
-# --------------------------------------------------------------------------------
-# Attention mechanism module
-from model.block.modules.attention import CasualSelfAttention
 
 # --------------------------------------------------------------------------------
-# Multi-Layer Perceptron (MLP) module
-from model.block.modules.mlp import MLP
+# Load model configuration
+from model.config import GPTConfig
 
-# --------------------------------------------------------------------------------
-# GPT2 block
-from model.block.block import Block
+num_return_sequences = 5 # number of sequences to generate.
+max_length = 30 # maximum length of the generated sequences
+
 
 # --------------------------------------------------------------------------------
 # Skeleton of the GPT model
 from model.skeleton_gpt2 import GPT
 
 
-# ---------------------------------------- Load model with model weights ----------------------------------------
-num_return_sequences = 5 # number of sequences to generate.
-max_length = 30 # maximum length of the generated sequences
-
-#model = GPT.from_pretrained('gpt2') # load the model from the transformers library.
-#model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
-#model.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
-#model.to(device) # we are moving all the model to the device at hand.
+# --------------------------------------------------------------------------------
+# Load model with hugging face weights
+model_hf = GPT.from_pretrained('gpt2') # load the model from the transformers library.
+model_hf = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
+model_hf.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
+model_hf.to(device) # we are moving all the model to the device at hand.
 
 
 # --------------------------------------------------------------------------------
-# Data pipeline
-import tiktoken
-from model.config import GPTConfig
-
-class DataloaderLite():
-    def __init__(self, B, T):
-        self.B = B
-        self.T = T
-
-        with open("input.txt", "r") as file:
-            text = file.read()
-        enc = tiktoken.get_encoding('gpt2')
-        tokens = enc.encode(text)
-        self.tokens = torch.tensor(tokens)
-
-        print(f"Loaded {len(self.tokens)} tokens")
-        print(f"1 epoch = {len(self.tokens) // (B * T)} batches")
-
-        # state
-        self.current_position = 0
-
-    def next_batch(self):
-        B, T = self.B, self.T
-
-        B, T = 4, 32
-        buf = self.tokens[self.current_position : self.current_position+B*T+1]
-        #buf = buf.to(device) # to(device) moves the tensor to the device at hand. But it's not stateful (todo - add explaination)
-        x = buf[:-1].view(B,T)
-        y = buf[1:].view(B,T) # y is basically x shifted by one token to the right
-        self.current_position += B*T
-
-        # In case we run out of data, we reset the position to the beginning of the data.
-        if self.current_position + (B * T + 1) > len(self.tokens):
-            self.current_position = 0
-        return x, y
-
-# get logics
+# Train model from scratch
+from model.dataloader import DataloaderLite
 
 train_loader = DataloaderLite(B=4, T=32)
 model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
 model.to(device) # we are moving all the model to the device at hand.
-
 optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
 
-for i in range(50):
+for i in range(10):
     optimizer.zero_grad() # always set gradients to zero
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
@@ -93,22 +51,25 @@ for i in range(50):
 
 # --------------------------------------------------------------------------------
 # Tokenization - first example
+from model.tokenizer import tokenizer
 
-import tiktoken
-enc = tiktoken.get_encoding('gpt2')
-#tokens = enc.encode("Hello, I'm a language model,")
-tokens = enc.encode("What is the meaning of life?")
-tokens = torch.tensor(tokens, dtype=torch.long) # In this case it's (8,) tokens
-tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # Repeats this tensor along the specified dimensions.
-x = tokens.to(device) # x is the idx for the forward function. I.e. the token we are feeding into the model.
+x = tokenizer(
+    text="Hello, I'm a language model,",
+    device=device,
+    nrs=num_return_sequences)
 
 
 # --------------------------------------------------------------------------------
 # Generation
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-
 print(f"\n\n Tokens to be feed into the model: \n\n {x}  \n\n with shape: {x.shape} \n\n")
+
+model_type = 'hff'
+if model_type == 'hf':
+    model = model_hf
+    print("Hugging face model")
+else:
+    model = model
+    print("Trained model")
 
 while x.size(1) < max_length:
     with torch.no_grad(): # we are not training the model (no gradient calculation), only using it to generate text
@@ -136,6 +97,7 @@ while x.size(1) < max_length:
         x = torch.cat((x, xcol), 1)
 
 # Print predicted tokens
+enc = tiktoken.get_encoding('gpt2')
 for i in range(num_return_sequences):
     tokens = x[i, :max_length].tolist()
     # Here we decode the token IDs back to text.

@@ -6,12 +6,6 @@ class MLP(nn.Module):
 
     Args:
         config (object): Configuration object containing model parameters.
-
-    Attributes:
-        c_fc (nn.Linear): Linear layer for the fully connected operation.
-        gelu (nn.GELU): GELU activation function.
-        c_proj (nn.Linear): Linear layer for the projection operation.
-
     """
     def __init__(self, config):
         super().__init__()

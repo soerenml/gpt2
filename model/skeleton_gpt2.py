@@ -25,6 +25,26 @@ class GPT(nn.Module):
         # TODO understand this part
         self.transformer.wte.weight= self.lm_head.weight
 
+        # init params
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        """
+        Initializes the weights of the given module.
+
+        Args:
+            module (nn.Module): The module whose weights need to be initialized.
+
+        Returns:
+            None
+        """
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
 
     def forward(self, idx, targets=None):
         B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length)
@@ -119,5 +139,5 @@ class GPT(nn.Module):
                 assert sd_hf[k].shape == sd[k].shape
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k])
-
+        print("------\n\nThis is the converted hugging face model:\n\n------", model)
         return model
