@@ -8,5 +8,5 @@ def device_info():
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    print(f"Using device: {device}")
+    print(f"\n\n--- Using device: {device} ---\n\n")
     return device

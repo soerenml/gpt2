@@ -2,6 +2,7 @@ import torch
 from torch.nn import functional as F
 import tiktoken
 from helper_functions import device_info
+import time
 
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
@@ -34,19 +35,34 @@ model_hf.to(device) # we are moving all the model to the device at hand.
 # Train model from scratch
 from model.dataloader import DataloaderLite
 
-train_loader = DataloaderLite(B=4, T=32)
+train_loader = DataloaderLite(B=32, T=1024)
+torch.set_float32_matmul_precision('high') # change quantization [E14]
+
 model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
 model.to(device) # we are moving all the model to the device at hand.
-optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
 
-for i in range(10):
-    optimizer.zero_grad() # always set gradients to zero
+# optimize!
+optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
+for i in range(50):
+    t0 = time.time()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
-    logits, loss = model(x, y)
+    optimizer.zero_grad() # always set gradients to zero
+
+    # Check device. If not an A100 don't use autocast
+    if device.type == 'mps':
+        logits, loss = model(x, y)
+    else:
+        with torch.autocast(device_type=device, dtype=torch.float16):
+            logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
-    print(f"step {i}, loss: {loss.item()}")
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    t1 = time.time()
+    dt = (t1 - t0) * 1000 # time difference in milliseconds
+    tokens_per_sec = (train_loader.B * train_loader.T) / dt
+    print(f"step {i}, loss: {loss.item()}, dt:{dt:.2f}ms, tok/sec: {tokens_per_sec:.2f}")
 
 
 # --------------------------------------------------------------------------------
