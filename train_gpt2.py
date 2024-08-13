@@ -48,7 +48,7 @@ for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
     optimizer.zero_grad() # always set gradients to zero
-
+    # TODO - run this on a A100
     # Check device. If not an A100 don't use autocast
     if device.type == 'mps':
         logits, loss = model(x, y)
