@@ -10,6 +10,7 @@ class CasualSelfAttention(nn.Module):
 
         self.n_head = config.n_head # numer attention heads
         self.n_embd = config.n_embd # embedding dimensionality
+        self.attention_type = config.attention_type # attention type
 
         """
         nn.Linear() [E1]
@@ -52,20 +53,25 @@ class CasualSelfAttention(nn.Module):
         """
         Attention computation (E4)
         """
-        # (Q@K)/sqrt(embedding lenth)
-        # This is the part which is most computationally expensive.
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # k.size(-1) is the length of the embeddings.
+        # Flash attention
+        if self.attention_type == 'flash':
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # E[14]
 
-        """
-        Mask (E5)
-        At this point we have a full attention matrix, backward and forward.
-        Nevertheless, we need to mask out the positions so only backward looking is possible.
-        """
-        # The name 'bias' us the lower triangular matrix we created in the __init__ function.
-        # It's a buffer, so it's not updated during backpropagation.
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
-        att = F.softmax(att, dim=-1)
-        y = att @ v # matrix multiplication attention * values - here we are going to use kv-caching in the future.
+        else:
+        # Regular attention
+            # (Q@K)/sqrt(embedding lenth)
+            # This is the part which is most computationally expensive.
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # k.size(-1) is the length of the embeddings.
+            """
+            Mask (E5)
+            At this point we have a full attention matrix, backward and forward.
+            Nevertheless, we need to mask out the positions so only backward looking is possible.
+            """
+            # The name 'bias' us the lower triangular matrix we created in the __init__ function.
+            # It's a buffer, so it's not updated during backpropagation.
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            y = att @ v # matrix multiplication attention * values - here we are going to use kv-caching in the future.
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.c_proj(y) # output projection

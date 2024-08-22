@@ -90,7 +90,7 @@ class GPT(nn.Module):
     2) We reschape the weights to match the shape our our model class.
     """
     @classmethod
-    def from_pretrained(cls, model_type):
+    def from_pretrained(cls, model_type, print_model: bool):
         """Loads pretrained GPT-2 model weights from huggingface"""
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         from transformers import GPT2LMHeadModel
@@ -137,5 +137,6 @@ class GPT(nn.Module):
                 assert sd_hf[k].shape == sd[k].shape
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k])
-        print("------\n\nThis is the converted hugging face model:\n\n------", model)
+        if print_model:
+            print("------\n\nThis is the converted hugging face model:\n\n------", model)
         return model
