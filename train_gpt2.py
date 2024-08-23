@@ -43,14 +43,14 @@ train_loader = DataloaderLite(B=32, T=1024)
 # speed improvement with float32
 torch.set_float32_matmul_precision('high') # change quantization [E14]
 
-model = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
+model = GPT(GPTConfig(vocab_size=50304)) # initialize the model with our GPTConfig class.
 model.to(device) # we are moving all the model to the device at hand.
 
 if device.type != 'mps':
         model = torch.compile(model) # speed improvement
 
 # optimize!
-optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
 for i in range(50):
     t0 = time.time()
     x, y = train_loader.next_batch()
@@ -65,13 +65,14 @@ for i in range(50):
         with torch.autocast(device_type=device, dtype=torch.float16):
             logits, loss = model(x, y)
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # gradient clipping [E14]
     optimizer.step()
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000 # time difference in milliseconds
     tokens_per_sec = (train_loader.B * train_loader.T) / dt
-    print(f"step {i}, loss: {loss.item()}, dt:{dt:.2f}ms, tok/sec: {tokens_per_sec:.2f}")
+    print(f"step {i} | loss: {loss.item()} |norm: {norm:.4f} | dt:{dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
 
 
 # --------------------------------------------------------------------------------
