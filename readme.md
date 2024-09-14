@@ -1,4 +1,13 @@
+# Replicate ChatGPT2
+---
+This material is based on the online lecture of Andrej Kaparthy.
+
+
+
 # Model includes the following components
+
+
+
 
 ### config.py
 Configuration class for the GPT model
