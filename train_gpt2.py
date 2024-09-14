@@ -9,6 +9,7 @@ import math
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
+#  Get device information
 device = device_info()
 
 
