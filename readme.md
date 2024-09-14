@@ -4,17 +4,8 @@ This material is based on the [online lecture](https://www.youtube.com/watch?v=l
 - train_gpt2.py: Execute model training.
 - core_ideas.ipynb: Explaination of core concepts and code.
 - helper_function.py: Basic helper functions.
+<br>
 - model
     - config.py: Model configuration.
-
-### config.py
-Configuration class for the GPT model
-<br>
-
-### dataloader.py
-Loads and tokenizes data from disc.
-<br>
-
-### tokenizer.py
-Basic tokenizer not used for the larger training but for examples.
-<br>
+    - dataloader.py: Loads and tokenizes data from disc.
+    - tokenizer.py: Basic tokenizer not used for the larger training but for examples.

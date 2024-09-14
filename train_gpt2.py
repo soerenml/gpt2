@@ -31,10 +31,10 @@ from model.skeleton_gpt2 import GPT
 
 # --------------------------------------------------------------------------------
 # Load model with hugging face weights
-model_hf = GPT.from_pretrained(model_type='gpt2', print_model=False) # load the model from the transformers library.
-model_hf = GPT(GPTConfig()) # initialize the model with our GPTConfig class.
-model_hf.eval() # we are in evaluation mode: we are not training the model, only using it to generate text.
-model_hf.to(device) # we are moving all the model to the device at hand.
+model_hf = GPT.from_pretrained(model_type='gpt2', print_model=False) # Load the model from the transformers library.
+model_hf = GPT(GPTConfig()) # Initialize the model with our GPTConfig class.
+model_hf.eval() # We are in evaluation mode: we are not training the model, only using it to generate text.
+model_hf.to(device) # We are moving all the model to the device at hand.
 
 
 # --------------------------------------------------------------------------------
@@ -51,28 +51,18 @@ if device.type != 'mps':
         model = torch.compile(model) # speed improvement
 
 
-# learning rate scheduler
-max_lr = 6e-4
-min_lr = max_lr * 0.1
-warmup_steps = 10
-max_steps = 50
+# Hyperparatemeter learning rate.
+MAX_LR = 6e-4
+MIN_LR = MAX_LR * 0.1
+WARMUP_STEPS = 10
+MAX_STEPS = 50
 
-def get_lr(it):
-    # 1) linear warmup for warum_iter steps
-    if it < warmup_steps:
-        return max_lr * (it+1) / warmup_steps
-    # 2) if lr > lr_decay_iters, return min learning rate
-    if it >= max_steps:
-        return min_lr
-    # 3) in between use cosine decay until min_lr
-    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
-    assert 0 <= decay_ratio <= 1
-    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff stars with 1 and goes to 0
-    return min_lr + coeff * (max_lr - min_lr)
+# Import learning rate function.
+from model.learning_rate import get_lr
 
 # optimize!
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
-for step in range(max_steps):
+for step in range(MAX_STEPS):
     t0 = time.time()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
@@ -87,7 +77,15 @@ for step in range(max_steps):
             logits, loss = model(x, y)
     loss.backward()
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # gradient clipping [E14]
-    lr = get_lr(step)
+    lr = get_lr(
+        it=step,
+        warmup_steps=WARMUP_STEPS,
+        max_steps=MAX_STEPS,
+        max_lr=MAX_LR,
+        min_lr=MIN_LR
+    )
+
+    # Update optimizer learning rate with the new learning rate.
     optimizer.param_groups[0]['lr'] = lr
     optimizer.step()
     if torch.cuda.is_available():
