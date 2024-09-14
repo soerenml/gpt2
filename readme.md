@@ -1,5 +1,5 @@
 # Replicate ChatGPT2
-This material is based on the [online lecture]{https://www.youtube.com/watch?v=l8pRSuU81PU} of Andrej Kaparthy.
+This material is based on the {online lecture}[https://www.youtube.com/watch?v=l8pRSuU81PU] of Andrej Kaparthy.
 
 
 
