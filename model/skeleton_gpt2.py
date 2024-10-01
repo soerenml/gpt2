@@ -94,7 +94,7 @@ class GPT(nn.Module):
     2) We reshape the weights to match the shape our our model class.
     """
     @classmethod
-    def from_pretrained(cls, model_type, print_model: bool):
+    def from_pretrained(cls, model_type, print_model: bool): # We use 'cls' as this is PEP8 convention for class methods
         """Loads pretrained GPT-2 model weights from huggingface"""
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         from transformers import GPT2LMHeadModel

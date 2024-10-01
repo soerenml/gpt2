@@ -7,7 +7,7 @@ class DataloaderLite():
         self.T = T
         self.current_position = 0
 
-        # Load the data
+        # Load the local data
         with open("input.txt", "r") as file:
             text = file.read()
 
@@ -22,9 +22,8 @@ class DataloaderLite():
 
 
     def next_batch(self):
+        # TODO - understand this part
         B, T = self.B, self.T
-        # TODO - Test if this is needed.
-        B, T = 4, 32
         buf = self.tokens[self.current_position : self.current_position+B*T+1]
         #buf = buf.to(device) # to(device) moves the tensor to the device at hand. But it's not stateful (todo - add explaination)
         x = buf[:-1].view(B,T)

@@ -1,11 +1,11 @@
 import math
 
-def get_lr(it: int,
-           warmup_steps: int,
-           max_steps: int,
-           max_lr: float,
-           min_lr: float
-    ) -> float:
+def get_lr(
+        it: int,
+        warmup_steps: int,
+        max_steps: int,
+        max_lr: float,
+        min_lr: float) -> float:
     # 1) linear warmup for warum_iter steps
     if it < warmup_steps:
         return max_lr * (it+1) / warmup_steps

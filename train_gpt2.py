@@ -4,8 +4,8 @@ import tiktoken
 from helper_functions import device_info
 import time
 from dataclasses import fields
-import math
 
+# Set seed for reproducibility
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
@@ -24,6 +24,7 @@ print("--- Model configuration ---\n")
 for field in fields(GPTConfig()):
     print(f"{field.name}: {field.default}")
 
+
 # --------------------------------------------------------------------------------
 # Skeleton of the GPT model
 from model.skeleton_gpt2 import GPT
@@ -32,7 +33,7 @@ from model.skeleton_gpt2 import GPT
 # --------------------------------------------------------------------------------
 # Load model with hugging face weights
 model_hf = GPT.from_pretrained(model_type='gpt2', print_model=False) # Load the model from the transformers library.
-model_hf = GPT(GPTConfig()) # Initialize the model with our GPTConfig class.
+model_hf = GPT(config=GPTConfig()) # Initialize the model with our GPTConfig class.
 model_hf.eval() # We are in evaluation mode: we are not training the model, only using it to generate text.
 model_hf.to(device) # We are moving all the model to the device at hand.
 
@@ -41,10 +42,10 @@ model_hf.to(device) # We are moving all the model to the device at hand.
 # Train model from scratch
 from model.dataloader import DataloaderLite
 
-train_loader = DataloaderLite(B=32, T=1024)
-torch.set_float32_matmul_precision('high') # change quantization [E14]
-model = GPT(GPTConfig(vocab_size=50304)) # initialize the model with our GPTConfig class.
-model.to(device) # we are moving all the model to the device at hand.
+train_loader = DataloaderLite(B=32, T=32)
+torch.set_float32_matmul_precision('high') # Change quantization [E14]
+model = GPT(GPTConfig(vocab_size=50304)) # Initialize the model with our GPTConfig class. We increase the vocab size to 50304. (F4)
+model.to(device) # We are moving all the model to the device at hand.
 
 # TODO - test on A100
 if device.type != 'mps':
@@ -77,13 +78,8 @@ for step in range(MAX_STEPS):
             logits, loss = model(x, y)
     loss.backward()
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # gradient clipping [E14]
-    lr = get_lr(
-        it=step,
-        warmup_steps=WARMUP_STEPS,
-        max_steps=MAX_STEPS,
-        max_lr=MAX_LR,
-        min_lr=MIN_LR
-    )
+    lr = get_lr(it=step, warmup_steps=WARMUP_STEPS, max_steps=MAX_STEPS,
+                max_lr=MAX_LR, min_lr=MIN_LR)
 
     # Update optimizer learning rate with the new learning rate.
     optimizer.param_groups[0]['lr'] = lr
