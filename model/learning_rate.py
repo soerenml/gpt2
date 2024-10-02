@@ -8,6 +8,7 @@ def get_lr(
         min_lr: float) -> float:
     # 1) linear warmup for warum_iter steps
     if it < warmup_steps:
+        # we are using (it+1) as we start from 0
         return max_lr * (it+1) / warmup_steps
     # 2) if lr > lr_decay_iters, return min learning rate
     if it >= max_steps:

@@ -77,7 +77,8 @@ for step in range(MAX_STEPS):
         with torch.autocast(device_type=device, dtype=torch.float16):
             logits, loss = model(x, y)
     loss.backward()
-    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # gradient clipping [E14]
+    # max_norm=1.0 ensures the total gradient norm doesn't exceed 1.0.
+    norm = torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0) # gradient clipping [E14]
     lr = get_lr(it=step, warmup_steps=WARMUP_STEPS, max_steps=MAX_STEPS,
                 max_lr=MAX_LR, min_lr=MIN_LR)
 
