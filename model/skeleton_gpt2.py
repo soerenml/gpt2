@@ -148,6 +148,7 @@ class GPT(nn.Module):
             print("------\n\nThis is the converted hugging face model:\n\n------", model)
         return model
 
+
     def configure_optimizer(self, weight_decay, learning_rate: float, device_type: str) -> torch.optim.AdamW:
         """
         Configures the optimizer for the model.
