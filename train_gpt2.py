@@ -62,7 +62,9 @@ MAX_STEPS = 50
 from model.learning_rate import get_lr
 
 # optimize!
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
+#optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
+optimizer = model.configure_optimizer(weight_decay=0.1, learning_rate=3e-4, device_type=device)
+
 for step in range(MAX_STEPS):
     t0 = time.time()
     x, y = train_loader.next_batch()

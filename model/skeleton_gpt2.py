@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 from model.block.block import Block
 from model.config import GPTConfig
+import inspect
 
 
 class GPT(nn.Module):
@@ -27,6 +28,7 @@ class GPT(nn.Module):
 
         # init params
         self.apply(self._init_weights)
+
 
     def _init_weights(self, module):
         """
@@ -86,6 +88,7 @@ class GPT(nn.Module):
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
         return logits, loss
 
+
     # --------------------------------------------------------------------------------
     # Extract the GPT model weights from huggingface
     """
@@ -144,3 +147,40 @@ class GPT(nn.Module):
         if print_model:
             print("------\n\nThis is the converted hugging face model:\n\n------", model)
         return model
+
+    def configure_optimizer(self, weight_decay, learning_rate: float, device_type: str) -> torch.optim.AdamW:
+        """
+        Configures the optimizer for the model.
+
+        Args:
+            weight_decay (float): The weight decay for the optimizer.
+            learning_rate (float): The learning rate for the optimizer.
+            device (torch.device): The device on which the model is running.
+
+        Returns:
+            torch.optim.AdamW: The configured optimizer.
+        """
+        print(self)
+        # start with all the candidate parameters that require gradients
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # we create different optimization groudp for parameters that we want to optimize
+        # every parameter that is 2d will be weight decayed (all weight tensors in matmul and embeddings)
+        # biases and layernorm parameters will not be weight decayed
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0}]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"\n\n num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        print(f"using fused AdamW: {use_fused}\n\n")
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), fused=use_fused)
+        return optimizer
+
+
