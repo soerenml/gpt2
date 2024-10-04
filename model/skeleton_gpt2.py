@@ -161,13 +161,12 @@ class GPT(nn.Module):
         Returns:
             torch.optim.AdamW: The configured optimizer.
         """
-        print(self)
         # start with all the candidate parameters that require gradients
         param_dict = {pn: p for pn, p in self.named_parameters()}
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
         # we create different optimization groudp for parameters that we want to optimize
         # every parameter that is 2d will be weight decayed (all weight tensors in matmul and embeddings)
-        # biases and layernorm parameters will not be weight decayed
+        # biases and layernorm parameters will not be weight decayed [E15]
         decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
         nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
         optim_groups = [
