@@ -149,7 +149,8 @@ class GPT(nn.Module):
         return model
 
 
-    def configure_optimizer(self, weight_decay, learning_rate: float, device_type: str) -> torch.optim.AdamW:
+    def configure_optimizer(self, weight_decay, learning_rate: float,
+                            device_type: str) -> torch.optim.AdamW:
         """
         Configures the optimizer for the model.
 
@@ -162,6 +163,9 @@ class GPT(nn.Module):
             torch.optim.AdamW: The configured optimizer.
         """
         # start with all the candidate parameters that require gradients
+        # we are creating an instance of the class in the main code 'model'
+        # with 'self' we are accessing the instance of the class ('model')
+        # and m
         param_dict = {pn: p for pn, p in self.named_parameters()}
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
         # we create different optimization groudp for parameters that we want to optimize
@@ -172,15 +176,15 @@ class GPT(nn.Module):
         optim_groups = [
             {'params': decay_params, 'weight_decay': weight_decay},
             {'params': nodecay_params, 'weight_decay': 0.0}]
+        # 'numel()' counts the nuber of elements in a tensor
         num_decay_params = sum(p.numel() for p in decay_params)
         num_nodecay_params = sum(p.numel() for p in nodecay_params)
         print(f"\n\n num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
         print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
         # Create AdamW optimizer and use the fused version if it is available
+        # We are using kernel fusion to speed up the training process only if cuda is available []
         fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
         use_fused = fused_available and device_type == 'cuda'
         print(f"using fused AdamW: {use_fused}\n\n")
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), fused=use_fused)
         return optimizer
-
-

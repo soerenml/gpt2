@@ -45,6 +45,7 @@ from model.dataloader import DataloaderLite
 train_loader = DataloaderLite(B=32, T=32)
 torch.set_float32_matmul_precision('high') # Change quantization [E14]
 model = GPT(GPTConfig(vocab_size=50304)) # Initialize the model with our GPTConfig class. We increase the vocab size to 50304. (F4)
+print(type(model))
 model.to(device) # We are moving all the model to the device at hand.
 
 # TODO - test on A100
@@ -62,7 +63,7 @@ MAX_STEPS = 50
 from model.learning_rate import get_lr
 
 # optimize!
-#optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
+#optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8))
 optimizer = model.configure_optimizer(weight_decay=0.1, learning_rate=3e-4, device_type=device)
 
 for step in range(MAX_STEPS):
