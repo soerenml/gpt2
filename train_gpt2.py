@@ -14,6 +14,16 @@ device = device_info()
 
 
 # --------------------------------------------------------------------------------
+# Hyperparameters
+total_batch_size = 524288 # 2**19 ˜ 0.5M tokens
+B = 16 # micro batch sizing
+T = 1024 # sequence length (B*T = total amount of tokens per batch)
+assert total_batch_size % (B * T) == 0, "Make sure total_batch_size is divisible by B * T"
+grad_acc_steps = total_batch_size // (B * T) # number of steps to accumulate gradients over
+print("Total desired batch size:", total_batch_size)
+print("=> Calculated gradient accumulation steps:", grad_acc_steps)
+
+# --------------------------------------------------------------------------------
 # Load model configuration
 from model.config import GPTConfig
 
@@ -42,6 +52,8 @@ model_hf.to(device) # We are moving all the model to the device at hand.
 # Train model from scratch
 from model.dataloader import DataloaderLite
 
+# B = batch size, T = sequence length
+# Every line of the batch is a sequence of tokens (1024)
 train_loader = DataloaderLite(B=32, T=32)
 torch.set_float32_matmul_precision('high') # Change quantization [E14]
 model = GPT(GPTConfig(vocab_size=50304)) # Initialize the model with our GPTConfig class. We increase the vocab size to 50304. (F4)
@@ -68,19 +80,23 @@ optimizer = model.configure_optimizer(weight_decay=0.1, learning_rate=3e-4, devi
 
 for step in range(MAX_STEPS):
     t0 = time.time()
-    x, y = train_loader.next_batch()
-    x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
     optimizer.zero_grad() # always set gradients to zero
-    # TODO - run this on a A100
-    # Check device. If not an A100 don't use autocast
-    if device.type == 'mps':
-        logits, loss = model(x, y)
-    else:
-        # speed improvement with autocast
-        with torch.autocast(device_type=device, dtype=torch.float16):
+    loss_accum = 0
+    for micro_step in range(grad_acc_steps):
+        x, y = train_loader.next_batch()
+        x, y = x.to(device), y.to(device) # to(device) moves the tensor to the device at hand. We are doing this here as we don't want to load the full dataset into the GPU memory.
+        # TODO - run this on a A100
+        # Check device. If not an A100 don't use autocast
+        if device.type == 'mps':
             logits, loss = model(x, y)
-    loss.backward()
-    # max_norm=1.0 ensures the total gradient norm doesn't exceed 1.0.
+        else:
+            # speed improvement with autocast
+            # TODO - describe autocast
+            with torch.autocast(device_type=device, dtype=torch.float16):
+                logits, loss = model(x, y)
+        loss = loss / grad_acc_steps # see video 2:40 for explanation
+        loss_accum += loss.detach() # we need to detach the loss as we don't want to store the computation graph for the loss
+        loss.backward()
     norm = torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0) # gradient clipping [E14]
     lr = get_lr(it=step, warmup_steps=WARMUP_STEPS, max_steps=MAX_STEPS,
                 max_lr=MAX_LR, min_lr=MIN_LR)
