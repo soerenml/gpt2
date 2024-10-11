@@ -16,7 +16,7 @@ device = device_info()
 # --------------------------------------------------------------------------------
 # Hyperparameters
 total_batch_size = 524288 # 2**19 ˜ 0.5M tokens
-B = 16 # micro batch sizing
+B = 2 # micro batch sizing
 T = 1024 # sequence length (B*T = total amount of tokens per batch)
 assert total_batch_size % (B * T) == 0, "Make sure total_batch_size is divisible by B * T"
 grad_acc_steps = total_batch_size // (B * T) # number of steps to accumulate gradients over
@@ -96,20 +96,24 @@ for step in range(MAX_STEPS):
                 logits, loss = model(x, y)
         loss = loss / grad_acc_steps # see video 2:40 for explanation
         loss_accum += loss.detach() # we need to detach the loss as we don't want to store the computation graph for the loss
-        loss.backward()
+        loss.backward() # E[17] how gradient accumulation works in detail.
+
     norm = torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0) # gradient clipping [E14]
+
     lr = get_lr(it=step, warmup_steps=WARMUP_STEPS, max_steps=MAX_STEPS,
                 max_lr=MAX_LR, min_lr=MIN_LR)
 
     # Update optimizer learning rate with the new learning rate.
     optimizer.param_groups[0]['lr'] = lr
+    # Update the weights of the model with the gradients.
     optimizer.step()
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000 # time difference in milliseconds
+    tokens_processed = train_loader.B * train_loader.T * grad_acc_steps
     tokens_per_sec = (train_loader.B * train_loader.T) / dt
-    print(f"step {step} | loss: {loss.item()} | lr: {lr:.4e}| norm: {norm:.4f} | dt:{dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
+    print(f"step {step} | loss: {loss_accum.item()} | lr: {lr:.4e}| norm: {norm:.4f} | dt:{dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
 
 
 # --------------------------------------------------------------------------------
