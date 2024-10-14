@@ -1,9 +1,11 @@
 import torch
 from torch.nn import functional as F
-import tiktoken
-from helper_functions import device_info
+import os
 import time
+from helper_functions import device_info
 from dataclasses import fields
+import tiktoken
+
 
 # Set seed for reproducibility
 torch.manual_seed(42)
@@ -12,16 +14,56 @@ torch.cuda.manual_seed(42)
 #  Get device information
 device = device_info()
 
+# --------------------------------------------------------------------------------
+# Run the training loop
+
+# A process group is a collection of processes that can communicate with each other using collective operations:
+# store, rank, and world_size
+from torch.distributed import init_process_group, destroy_process_group
+
+# set up ddp (distrubuted data parallel)
+ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
+
+if ddp:
+    # use the ddp atm demands CUDA, we set the device appropriately according to rank.
+    assert(torch.cuda.is_available()), "for now, I think we need CUDA for DDP"
+    init_process_group(backend='nccl') # nccl is the backend for distributed training (multiple processor per machine)
+    ddp_rank = int(os.environ['RANK']) # the rank of the current process
+    ddp_local_rank = int(os.environ['LOCAL_RANK']) # this is only used in a multi-node setup
+    ddp_world_size = int(os.environ['WORLD_SIZE']) # this is eight, as we are running on eight machines
+    device = f"cuda:{ddp_local_rank}" # set the device to the local rank
+    master_process = ddp_rank == 0 # the master process is the one with rank 0 (will do the printing, logging and checkpointing)
+else:
+    # vanilla no-ddp run
+    ddp_rank = 0
+    ddp_local_rank = 0
+    ddp_world_size = 1
+    master_process = True
+    # attempt to autodetect device
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+    print(f"using device: {device}")
+
+
+
 
 # --------------------------------------------------------------------------------
 # Hyperparameters
 total_batch_size = 524288 # 2**19 ˜ 0.5M tokens
 B = 2 # micro batch sizing
 T = 1024 # sequence length (B*T = total amount of tokens per batch)
-assert total_batch_size % (B * T) == 0, "Make sure total_batch_size is divisible by B * T"
-grad_acc_steps = total_batch_size // (B * T) # number of steps to accumulate gradients over
-print("Total desired batch size:", total_batch_size)
-print("=> Calculated gradient accumulation steps:", grad_acc_steps)
+assert total_batch_size % (B * T * ddp_world_size) == 0, "Make sure total_batch_size is divisible by B * T"
+grad_acc_steps = total_batch_size // (B * T * ddp_world_size) # number of steps to accumulate gradients over
+if master_process:
+    print("Total desired batch size:", total_batch_size)
+    print("=> Calculated gradient accumulation steps:", grad_acc_steps)
+
+print(f"I am a GPU: {ddp_rank}")
+print("Bye")
+import sys; sys.exit(0)
 
 # --------------------------------------------------------------------------------
 # Load model configuration
