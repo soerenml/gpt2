@@ -48,8 +48,6 @@ else:
     print(f"using device: {device}")
 
 
-
-
 # --------------------------------------------------------------------------------
 # Hyperparameters
 total_batch_size = 524288 # 2**19 ˜ 0.5M tokens
@@ -63,13 +61,13 @@ if master_process:
 
 print(f"I am a GPU: {ddp_rank}")
 print("Bye")
-import sys; sys.exit(0)
+#import sys; sys.exit(0)
 
 # --------------------------------------------------------------------------------
 # Load model configuration
 from model.config import GPTConfig
 
-num_return_sequences = 5 # number of sequences to generate.
+num_return_sequences = 5 # number of sequences to generate
 max_length = 30 # maximum length of the generated sequences
 
 print("--- Model configuration ---\n")
