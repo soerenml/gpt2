@@ -11,16 +11,17 @@ class GPT(nn.Module):
         super().__init__()
         self.config = config
 
+        # Step 1: Define different layers and modules of the model
         # ModuleDict [E8]
         self.transformer = nn.ModuleDict(
             dict(
                 wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings
                 wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings (config.block_size = maximum length of input sequences)
-                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other (E7).
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other [E7|
                 ln_f = nn.LayerNorm(config.n_embd), # Normalization layer.
             )
         )
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classifier head.
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classification layer head
 
         # Weight tying [E12]
         self.transformer.wte.weight = self.lm_head.weight
