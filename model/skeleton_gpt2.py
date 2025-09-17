@@ -8,26 +8,45 @@ import inspect
 
 class GPT(nn.Module):
     def __init__(self, config):
+        """
+        Initializes the GPT-2 model components.
+
+        Args:
+            config: Configuration object containing model hyperparameters such as
+                vocab_size (size of the vocabulary),
+                n_embd (embedding dimension),
+                block_size (maximum input sequence length),
+                n_layer (number of transformer blocks).
+
+        Attributes:
+            transformer (nn.ModuleDict): Contains the main transformer modules:
+                - wte: Token embedding layer.
+                - wpe: Positional encoding embedding layer.
+                - h: List of transformer blocks.
+                - ln_f: Final layer normalization.
+            lm_head (nn.Linear): Linear layer for language modeling head.
+
+        Notes:
+            - The token embedding weights are tied with the language modeling head weights.
+            - Model parameters are initialized using the _init_weights method.
+        """
         super().__init__()
         self.config = config
 
-        # Step 1: Define different layers and modules of the model
-        # ModuleDict [E8]
+        # Step 1: Define different layers and modules of the model [E8]
         self.transformer = nn.ModuleDict(
             dict(
                 wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings
                 wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings (config.block_size = maximum length of input sequences)
-                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other [E7|
-                ln_f = nn.LayerNorm(config.n_embd), # Normalization layer.
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other [E7]
+                ln_f = nn.LayerNorm(config.n_embd), # Normalization layer
             )
         )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classification layer head
 
-        # Weight tying [E12]
-        self.transformer.wte.weight = self.lm_head.weight
+        self.transformer.wte.weight = self.lm_head.weight # Weight tying [E12]
 
-        # Init parameters
-        self.apply(self._init_weights)
+        self.apply(self._init_weights) # Init parameters
 
 
     def _init_weights(self, module):

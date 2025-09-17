@@ -19,7 +19,7 @@ class CasualSelfAttention(nn.Module):
         """
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
         self.c_proj = nn.Linear(config.n_embd, config.n_embd) # output projection
-        self.c_proj.NANOGPT_SCALE_INIT = 1
+        self.c_proj.NANOGPT_SCALE_INIT = 1 # todo - what is this doing?
 
         """
         Mask [E2]

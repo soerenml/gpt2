@@ -33,7 +33,7 @@ class MLP(nn.Module):
         return x
 
 """
-Computational Efficiency: The tanh approximation for GELU is faster to compute than the exact version,
+(1) - Computational Efficiency: The tanh approximation for GELU is faster to compute than the exact version,
 which involves the cumulative distribution function (CDF) of the standard normal distribution.
 For large-scale models and extensive training, these small computational savings can add up significantly.
 """
