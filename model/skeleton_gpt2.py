@@ -24,7 +24,7 @@ class GPT(nn.Module):
                 - wpe: Positional encoding embedding layer.
                 - h: List of transformer blocks.
                 - ln_f: Final layer normalization.
-            lm_head (nn.Linear): Linear layer for language modeling head.
+            lm_head (nn.Linear): Linear layer for lan guage modeling head.
 
         Notes:
             - The token embedding weights are tied with the language modeling head weights.
@@ -39,13 +39,11 @@ class GPT(nn.Module):
                 wte = nn.Embedding(config.vocab_size, config.n_embd), # Token embeddings
                 wpe = nn.Embedding(config.block_size, config.n_embd), # Positional encodings (config.block_size = maximum length of input sequences)
                 h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # Number of blocks stacked on each other [E7]
-                ln_f = nn.LayerNorm(config.n_embd), # Normalization layer
+                ln_f = nn.LayerNorm(config.n_embd), # Normalization layer at the end of the transformer [see Theory #1]
             )
         )
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # Final (linear) classification layer head
-
         self.transformer.wte.weight = self.lm_head.weight # Weight tying [E12]
-
         self.apply(self._init_weights) # Init parameters
 
 
@@ -74,7 +72,18 @@ class GPT(nn.Module):
 
     def forward(self, idx, targets=None):
         """
-        Forward pass of the model.
+        Performs the forward pass of the GPT-2 model.
+
+        Args:
+            idx (torch.Tensor): Input tensor of token indices with shape (B, T), where B is batch size and T is sequence length.
+            targets (torch.Tensor, optional): Target tensor of token indices with shape (B, T) for computing the cross-entropy loss. Default is None.
+
+        Returns:
+            logits (torch.Tensor): Output logits of shape (B, T, vocab_size) representing the predicted token probabilities.
+            loss (torch.Tensor or None): Cross-entropy loss computed between logits and targets if targets are provided, otherwise None.
+
+        Raises:
+            AssertionError: If the input sequence length T exceeds the model's configured block size.
         """
         B, T = idx.size() # idx is of shape (B, T) = (batch size, sequence length) [F1].
         assert T <= self.config.block_size, "Cannot forward, model block size is exhausted." # block_size = maximum length of input sequences (block size is the maximum length of input sequences)
@@ -116,7 +125,7 @@ class GPT(nn.Module):
     2) We reshape the weights to match the shape our our model class.
     """
     @classmethod
-    def from_pretrained(cls, model_type, print_model: bool): # We use 'cls' as this is PEP8 convention for class methods
+    def from_pretrained(cls, model_type, print_model: bool=True): # We use 'cls' as this is PEP8 convention for class methods
         """Loads pretrained GPT-2 model weights from huggingface"""
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         from transformers import GPT2LMHeadModel
