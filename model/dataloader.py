@@ -2,23 +2,39 @@ import tiktoken
 import torch
 
 class DataloaderLite():
-    def __init__(self, B, T):
+    def __init__(self, B, T, file_path="input.txt", print_data: bool = False):
+        """
+        Initializes the data loader by setting up parameters and loading data.
+        """
         self.B = B
         self.T = T
         self.current_position = 0
+        self.print_data = print_data
 
-        # Load the local data
-        with open("input.txt", "r") as file:
+        # Call the private method to load and process the data
+        self._load_and_tokenize(file_path)
+
+
+    def _load_and_tokenize(self, file_path):
+        """
+        Loads the text file, encodes it, and prints statistics.
+        This is a private helper method.
+        """
+        with open(file_path, "r", encoding="utf-8") as file:
             text = file.read()
 
-        # Encode the text using gpt2 tokenizer
-        enc = tiktoken.get_encoding('gpt2')
-        tokens = enc.encode(text)
-        self.tokens = torch.tensor(tokens)
+        if self.print_data:
+            print(f"Loaded text data from '{file_path}':")
+            print(text[:1000])  # Print the first 1000 characters
 
-        # Print some statistics
-        print(f"Loaded {len(self.tokens)} tokens")
-        print(f"1 epoch = {len(self.tokens) // (B * T)} batches")
+        enc = tiktoken.get_encoding('gpt2')
+        self.tokens = torch.tensor(enc.encode(text))
+
+        self.num_tokens = len(self.tokens)
+        self.num_batches = self.num_tokens // (self.B * self.T)
+
+        print(f"Loaded {self.num_tokens} tokens from '{file_path}'")
+        print(f"Dataset has {self.num_batches} batches per epoch.")
 
 
     def next_batch(self):
