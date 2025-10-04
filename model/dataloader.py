@@ -6,8 +6,8 @@ class DataloaderLite():
         """
         Initializes the data loader by setting up parameters and loading data.
         """
-        self.B = B
-        self.T = T
+        self.B = B # B is the batch size
+        self.T = T # T is the length of the sequence
         self.current_position = 0
         self.print_data = print_data
 
